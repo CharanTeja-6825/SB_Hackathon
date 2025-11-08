@@ -16,8 +16,8 @@ load_dotenv()
 # ================================
 @st.cache_resource
 def load_assets():
-    model = joblib.load("model.pkl")
-    label_encoder = joblib.load("label_encoder.pkl")
+    model = joblib.load("saves/model.pkl")
+    label_encoder = joblib.load("saves/label_encoder.pkl")
     return model, label_encoder
 
 model, label_encoder = load_assets()
