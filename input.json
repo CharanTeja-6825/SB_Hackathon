@@ -1,0 +1,5 @@
+{
+  "user_data/test_customers.csv": "user_data/test_customers.csv",
+  "saves/label_encoder.pkl": "saves/label_encoder.pkl",
+  "saves/model.pkl": "saves/model.pkl"
+}
