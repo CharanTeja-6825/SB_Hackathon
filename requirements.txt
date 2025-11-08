@@ -3,5 +3,6 @@ pandas
 joblib
 scikit-learn
 google-generativeai
-
 xgboost
+dotenv
+
