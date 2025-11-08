@@ -8,6 +8,7 @@ from email.mime.multipart import MIMEMultipart
 from google import generativeai as genai
 from dotenv import load_dotenv
 from sklearn.preprocessing import LabelEncoder
+from xgboost import XGBClassifier
 
 # Load environment variables
 load_dotenv()
