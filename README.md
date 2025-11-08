@@ -42,39 +42,25 @@ This Streamlit application predicts customer churn risk and provides a tool to s
 
 ## Configuration
 
-### 1. Generative AI API Key
+Create a `.env` file in the root of the project and add the following environment variables:
 
-This application uses Google's Generative AI to generate personalized emails. You need to provide a Gemini API key.
+```
+GEMINI_API_KEY="YOUR_API_KEY"
+SMTP_FROM_EMAIL="your_email@example.com"
+SMTP_SERVER="smtp.example.com"
+SMTP_PORT="587"
+SMTP_USER="your_username"
+SMTP_PASSWORD="your_password"
+```
 
--   Set the `GEMINI_API_KEY` environment variable to your API key.
+-   Replace the values with your actual credentials.
+-   You can use the `.env.example` file as a template.
 
-    ```bash
-    export GEMINI_API_KEY="YOUR_API_KEY"
-    ```
-
-### 2. SMTP Configuration for Sending Emails
-
-To send emails, you need to configure your SMTP server settings as environment variables.
-
--   `SMTP_FROM_EMAIL`: The email address you are sending from.
--   `SMTP_SERVER`: The address of your SMTP server (e.g., `smtp.gmail.com`).
--   `SMTP_PORT`: The port of your SMTP server (e.g., `587` for TLS).
--   `SMTP_USER`: The username for your SMTP server (often your email address).
--   `SMTP_PASSWORD`: The password for your SMTP server.
-
-    ```bash
-    export SMTP_FROM_EMAIL="your_email@example.com"
-    export SMTP_SERVER="smtp.example.com"
-    export SMTP_PORT="587"
-    export SMTP_USER="your_username"
-    export SMTP_PASSWORD="your_password"
-    ```
-
-    **Note:** For services like Gmail, you may need to use an "App Password" instead of your regular password.
+**Note:** For services like Gmail, you may need to use an "App Password" instead of your regular password.
 
 ## How to Run
 
-1.  Make sure you have set the environment variables as described above.
+1.  Make sure you have created the `.env` file as described in the `Configuration` section.
 2.  Run the Streamlit application:
     ```bash
     streamlit run streamlit_app.py
@@ -91,3 +77,23 @@ python user_data/fake_customers.py
 ```
 
 This will create a new `test_customers.csv` file in the `user_data` directory.
+
+## Docker Instructions
+
+To build and run this application as a Docker container, follow these steps:
+
+1.  **Build the Docker image:**
+    ```bash
+    docker build -t churn-health-dashboard .
+    ```
+
+2.  **Create a `.env` file:**
+    -   Copy the `.env.example` file to a new file named `.env`.
+    -   Update the `.env` file with your actual credentials.
+
+3.  **Run the Docker container:**
+    ```bash
+    docker run -p 8501:8501 --env-file .env churn-health-dashboard
+    ```
+
+4.  Open your web browser and go to `http://localhost:8501`.
