@@ -162,28 +162,80 @@ if uploaded_file:
         .format({"health_score": "{:.3f}"})
     )
 
-    st.markdown("### 📧 AI-Powered Email Outreach")
+    st.markdown("---")
+    st.markdown("### 🤖 AI Agent: Autonomous Email Outreach")
+    
     if "GEMINI_API_KEY" not in os.environ:
-        st.warning("GEMINI_API_KEY environment variable not set. Email generation is disabled.")
+        st.warning("⚠️ GEMINI_API_KEY environment variable not set. Email generation is disabled.")
     else:
-        if st.button("Generate Personalized Emails"):
-            st.session_state.generated_emails = {}
-            with st.spinner("Generating emails..."):
+        # Check if emails haven't been sent yet for this upload
+        current_file_id = f"{uploaded_file.name}_{len(top_5)}"
+        
+        if f"emails_sent_{current_file_id}" not in st.session_state:
+            st.info("🤖 **AI Agent is now automatically generating and sending emails to top 5 at-risk customers...**")
+            
+            # Automatically generate and send emails
+            success_count = 0
+            failed_count = 0
+            email_reports = []
+            
+            with st.spinner("🧠 AI Agent: Generating personalized emails and sending..."):
                 for _, row in top_5.iterrows():
+                    customer_id = row["customerID"]
+                    customer_email = row["email"]
+                    
+                    # Generate email
                     email_content = generate_email(row)
+                    
                     if email_content:
-                        st.session_state.generated_emails[row["customerID"]] = email_content
-
-    if "generated_emails" in st.session_state:
-        for customer_id, email_content in st.session_state.generated_emails.items():
-            st.text_area(f"Email for {customer_id}", email_content, height=300, key=f"email_for_{customer_id}")
-            if st.button(f"Send Email to {customer_id}", key=f"send_email_to_{customer_id}"):
-                customer_email = top_5.loc[top_5['customerID'] == customer_id, 'email'].iloc[0]
-                subject = f"Regarding your experience with our service (Customer ID: {customer_id})"
-                if send_email(customer_email, subject, email_content):
-                    st.success(f"Email sent to {customer_id} at {customer_email}")
-                else:
-                    st.error(f"Failed to send email to {customer_id}")
+                        # Send email automatically
+                        subject = f"Regarding your experience with our service"
+                        if send_email(customer_email, subject, email_content):
+                            success_count += 1
+                            email_reports.append({
+                                "customerID": customer_id,
+                                "email": customer_email,
+                                "status": "✅ Sent",
+                                "health_score": row["health_score"]
+                            })
+                        else:
+                            failed_count += 1
+                            email_reports.append({
+                                "customerID": customer_id,
+                                "email": customer_email,
+                                "status": "❌ Failed",
+                                "health_score": row["health_score"]
+                            })
+                    else:
+                        failed_count += 1
+                        email_reports.append({
+                            "customerID": customer_id,
+                            "email": customer_email,
+                            "status": "❌ Generation Failed",
+                            "health_score": row["health_score"]
+                        })
+            
+            # Mark as sent
+            st.session_state[f"emails_sent_{current_file_id}"] = True
+            st.session_state[f"email_reports_{current_file_id}"] = email_reports
+            
+            # Show results
+            if success_count > 0:
+                st.success(f"✅ AI Agent successfully sent {success_count} personalized retention emails!")
+            if failed_count > 0:
+                st.warning(f"⚠️ {failed_count} emails failed to send.")
+            
+            # Display email report
+            st.markdown("#### 📊 Email Delivery Report")
+            report_df = pd.DataFrame(email_reports)
+            st.dataframe(report_df, use_container_width=True, hide_index=True)
+            
+        else:
+            # Already sent - show previous results
+            st.success("✅ AI Agent has already sent emails for these customers!")
+            st.markdown("#### 📊 Previous Email Delivery Report")
+            report_df = pd.DataFrame(st.session_state[f"email_reports_{current_file_id}"])
+            st.dataframe(report_df, use_container_width=True, hide_index=True)
 
     # Download predictions
     csv = results.to_csv(index=False).encode("utf-8")
