@@ -1,7 +1,15 @@
 import streamlit as st
 import pandas as pd
 import joblib
-import requests
+import os
+import smtplib
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
+from google import generativeai as genai
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
 
 # ================================
 # 🎯 Load model and encoder
@@ -42,67 +50,145 @@ def predict_health_scores(df):
     return df_sorted
 
 # ================================
-# ⚙️ Helper: send data to n8n webhook
+# 📧 Helper: Generate Email with AI
 # ================================
-def send_to_n8n(top_5_df, webhook_url):
-    success, fail = 0, 0
-    for _, row in top_5_df.iterrows():
-        payload = {
-            "customer_id": row.get("customerID", ""),
-            "email": row.get("email", f"{row['customerID'].lower()}@telecommail.com"),
-            "issue": row.get("complaint", "General dissatisfaction"),
-            "health_score": float(row.get("health_score", 0))
-        }
-        try:
-            r = requests.post(webhook_url, json=payload, timeout=10)
-            if r.status_code == 200:
-                success += 1
-            else:
-                fail += 1
-        except Exception as e:
-            fail += 1
-            print(f"Error sending to n8n: {e}")
-    return success, fail
+def generate_email(customer_data):
+    """
+    Generates a personalized HTML email using a generative AI model.
+    """
+    try:
+        genai.configure(api_key=os.environ["GEMINI_API_KEY"])
+        model = genai.GenerativeModel('gemini-pro-latest')
+    except Exception as e:
+        st.error(f"Error configuring Generative AI: {e}")
+        return None
+
+    prompt = f"""
+    You are a customer retention specialist at a telecom company.
+    A customer is at high risk of churning. Their details are:
+    - Customer ID: {customer_data['customerID']}
+    - Email: {customer_data['email']}
+    - Complaint: {customer_data['complaint']}
+    - Health Score: {customer_data['health_score']:.3f} (closer to 0 is worse)
+
+    Write a personalized and empathetic HTML email to this customer.
+    The goal is to acknowledge their issue, show that you are taking it seriously,
+    and offer to help resolve it. Keep the tone professional and caring.
+    offer any discounts or promotions.
+    Sign off as "Telcom Service Team".
+
+    The email should be visually appealing and well-formatted.
+    Use HTML tags to structure the email with headings, paragraphs, and bold text for emphasis.
+    Here is an example of the structure:
+    <html>
+    <head></head>
+    <body>
+        <h2>Subject: Regarding Your Recent Experience</h2>
+        <p>Dear Customer,</p>
+        <p>We are writing to you about the recent issue you experienced: <strong>{customer_data['complaint']}</strong>.</p>
+        <p>...</p>
+        <p>Sincerely,</p>
+        <p><strong>The Customer Success Team</strong></p>
+    </body>
+    </html>
+
+    Please only return the raw HTML of the email, starting with <html> and ending with </html>.
+    """
+
+    try:
+        response = model.generate_content(prompt)
+        return response.text
+    except Exception as e:
+        st.error(f"Error generating email: {e}")
+        return None
+
+# ================================
+# 📤 Helper: Send Email
+# ================================
+def send_email(to_address, subject, body):
+    """
+    Sends an email using SMTP.
+    """
+    from_address = os.environ.get("SMTP_FROM_EMAIL")
+    smtp_server = os.environ.get("SMTP_SERVER")
+    smtp_port = os.environ.get("SMTP_PORT")
+    smtp_user = os.environ.get("SMTP_USER")
+    smtp_password = os.environ.get("SMTP_PASSWORD")
+
+    if not all([from_address, smtp_server, smtp_port, smtp_user, smtp_password]):
+        st.error("SMTP environment variables not set. Please configure them to send emails.")
+        return False
+
+    msg = MIMEMultipart()
+    msg['From'] = from_address
+    msg['To'] = to_address
+    msg['Subject'] = f"Regarding your experience with our service (Customer ID: {to_address})"
+    msg.attach(MIMEText(body, 'html'))
+
+    try:
+        with smtplib.SMTP(smtp_server, int(smtp_port)) as server:
+            server.starttls()
+            server.login(smtp_user, smtp_password)
+            server.send_message(msg)
+        return True
+    except Exception as e:
+        st.error(f"Error sending email: {e}")
+        return False
+
+
 
 # ================================
 # 🖥️ Streamlit UI
 # ================================
 st.set_page_config(page_title="Telecom SMB Churn Health Dashboard", layout="centered")
 
-st.title("📊 Telecom SMB Customer Health Dashboard")
+st.title("Telecom SMB Customer Health Dashboard")
 st.caption("Predict churn risk and trigger retention automation through n8n")
 
 uploaded_file = st.file_uploader("📂 Upload your customer CSV", type=["csv"])
-webhook_url = st.text_input("🔗 n8n Webhook URL", placeholder="https://your-n8n-instance/webhook/notify")
 
 if uploaded_file:
     df = pd.read_csv(uploaded_file)
-    st.success(f"✅ File uploaded: {uploaded_file.name}")
+    st.success(f"File uploaded: {uploaded_file.name}")
 
     with st.spinner("Analyzing customer data..."):
         results = predict_health_scores(df)
 
     top_5 = results.sort_values("health_score").head(5)
-    st.subheader("🚨 Top 5 High-Risk Customers")
+    st.subheader("Top 5 High-Risk Customers")
     st.dataframe(
         top_5[["customerID", "email", "complaint", "health_score", "Risk_Level"]]
         .style.background_gradient(cmap="Reds", subset=["health_score"])
         .format({"health_score": "{:.3f}"})
     )
 
-    st.markdown("### ⚡ Automation")
-    if st.button("Send to n8n Automation"):
-        if webhook_url.strip() == "":
-            st.error("Please enter your n8n Webhook URL first.")
-        else:
-            with st.spinner("Sending data to n8n..."):
-                success, fail = send_to_n8n(top_5, webhook_url)
-            st.success(f"✅ Sent {success} users to n8n | ❌ Failed: {fail}")
+    st.markdown("### 📧 AI-Powered Email Outreach")
+    if "GEMINI_API_KEY" not in os.environ:
+        st.warning("GEMINI_API_KEY environment variable not set. Email generation is disabled.")
+    else:
+        if st.button("Generate Personalized Emails"):
+            st.session_state.generated_emails = {}
+            with st.spinner("Generating emails..."):
+                for _, row in top_5.iterrows():
+                    email_content = generate_email(row)
+                    if email_content:
+                        st.session_state.generated_emails[row["customerID"]] = email_content
+
+    if "generated_emails" in st.session_state:
+        for customer_id, email_content in st.session_state.generated_emails.items():
+            st.text_area(f"Email for {customer_id}", email_content, height=300, key=f"email_for_{customer_id}")
+            if st.button(f"Send Email to {customer_id}", key=f"send_email_to_{customer_id}"):
+                customer_email = top_5.loc[top_5['customerID'] == customer_id, 'email'].iloc[0]
+                subject = f"Regarding your experience with our service (Customer ID: {customer_id})"
+                if send_email(customer_email, subject, email_content):
+                    st.success(f"Email sent to {customer_id} at {customer_email}")
+                else:
+                    st.error(f"Failed to send email to {customer_id}")
 
     # Download predictions
     csv = results.to_csv(index=False).encode("utf-8")
     st.download_button(
-        label="⬇️ Download Full Predictions CSV",
+        label="Download Full Predictions CSV",
         data=csv,
         file_name="health_scores.csv",
         mime="text/csv"
@@ -110,8 +196,3 @@ if uploaded_file:
 else:
     st.info("👆 Upload a customer CSV file to begin.")
 
-st.markdown("---")
-st.markdown(
-    "<p style='text-align:center; color:gray;'>Built with ❤️ • AI + Automation • n8n Integration</p>",
-    unsafe_allow_html=True,
-)
